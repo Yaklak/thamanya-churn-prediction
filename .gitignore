@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Virtual environments
+.env
+.venv
+*.conda
+*.DS_Store
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Models and data
+models/
+data/
+
+# Logs
+*.log

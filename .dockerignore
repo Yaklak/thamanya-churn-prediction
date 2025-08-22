@@ -1,0 +1,10 @@
+.venv
+__pycache__/
+*.pyc
+mlruns/
+models/registry/*.joblib
+models/artifacts/*.joblib
+data/
+logs/
+.git
+.gitignore

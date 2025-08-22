@@ -1,8 +1,14 @@
+# configs/training.yaml
 random_seed: 42
-target: churn
 test_size: 0.2
+target: churn
+
+data:
+  path: data/raw/customer_churn_mini.json  # data JSONL file
+
 features:
   drop: ["userId", "last_ts", "first_ts", "location"]
+
 model:
   name: xgboost
   params:
@@ -11,6 +17,8 @@ model:
     learning_rate: 0.1
     subsample: 0.9
     colsample_bytree: 0.9
+
 imbalance:
   method: class_weight
+
 metrics: ["roc_auc", "average_precision", "f1"]

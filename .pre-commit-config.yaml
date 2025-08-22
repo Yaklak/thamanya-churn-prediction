@@ -1,0 +1,38 @@
+repos:
+  # --- General hygiene hooks ---
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+
+  # --- Code formatting ---
+  - repo: https://github.com/psf/black
+    rev: 24.3.0
+    hooks:
+      - id: black
+        language_version: python3.10
+
+  - repo: https://github.com/pycqa/isort
+    rev: 5.12.0
+    hooks:
+      - id: isort
+        args: ["--profile=black"]
+
+  # --- Linting ---
+  - repo: https://github.com/pycqa/flake8
+    rev: 6.1.0
+    hooks:
+      - id: flake8
+
+  # --- Run tests before commit ---
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest
+        entry: bash -c 'if ls tests/test_*.py >/dev/null 2>&1; then pytest -q; else echo "no tests found (skipping)"; fi'
+        language: system
+        pass_filenames: false
+        always_run: true

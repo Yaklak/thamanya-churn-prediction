@@ -126,6 +126,14 @@ def main(cfg):
     schema_path.write_text(json.dumps(list(X.columns)))
     print(f"Wrote input schema to {schema_path}")
 
+    # Auto-create a real example payload for README/tests
+    try:
+        from scripts.export_example import main as export_example_main
+
+        export_example_main()
+    except Exception as e:
+        print(f"[WARN] Could not export example payload: {e}")
+
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()

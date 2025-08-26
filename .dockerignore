@@ -1,10 +1,22 @@
-.venv
-__pycache__/
-*.pyc
-mlruns/
-models/registry/*.joblib
-models/artifacts/*.joblib
-data/
-logs/
+# VCS & caches
 .git
 .gitignore
+__pycache__/
+.mypy_cache/
+.pytest_cache/
+.pre-commit-config.yaml
+
+# Local envs & IDE
+.venv/
+.env
+.env.*
+.vscode/
+.idea/
+
+# Data & artifacts (mount what you need at runtime)
+data/
+models/artifacts/*
+!models/artifacts/best/**
+
+# OS junk
+.DS_Store

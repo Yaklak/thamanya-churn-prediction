@@ -1,4 +1,4 @@
-# Thamanya Churn Prediction
+# Churn Prediction
 
 Production-ready churn prediction pipeline with feature engineering, **multi-model training** (Logistic Regression, Decision Tree, Random Forest), **model selection & registry**, and a **FastAPI** service for real-time scoring. Includes schema-aware payload validation, example payloads, pre-commit hooks, and Docker packaging.
 
@@ -75,6 +75,7 @@ make train
 make serve
 ```
 
+
 ### Endpoints
 
 - `GET /health`
@@ -82,6 +83,35 @@ make serve
 - `GET /model/schema`
 - `GET /model/example`
 - `POST /predict`
+
+### Quickstart: Real Example Payload
+
+After running `make train`, a real schema-aligned example is automatically generated at:
+
+```
+examples/example_payload.json
+```
+
+You can send it directly to the API:
+
+```bash
+curl -X POST http://127.0.0.1:8000/predict \
+  -H "Content-Type: application/json" \
+  -d @examples/example_payload.json | jq
+```
+
+You can also fetch examples dynamically from the API:
+
+```bash
+# Real row from latest processed features
+curl 'http://127.0.0.1:8000/model/example' | jq
+
+# Minimal all-zeros skeleton
+curl 'http://127.0.0.1:8000/model/example?minimal=true' | jq
+
+# Pick a specific row (e.g., row 5)
+curl 'http://127.0.0.1:8000/model/example?idx=5' | jq
+```
 
 ## Docker
 

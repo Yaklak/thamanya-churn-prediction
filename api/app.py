@@ -1,27 +1,42 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+import json
+import traceback
 from pathlib import Path
-import joblib, pandas as pd, json, traceback
+
+import joblib
+import pandas as pd
+from fastapi import FastAPI, HTTPException
 
 app = FastAPI(title="Churn API", version="0.1.0")
 
-MODEL_PATH = Path("models/registry/latest_model.joblib")
+BEST_DIR = Path("models/artifacts/best")
+MODEL_PATH = BEST_DIR / "model.joblib"
+METRICS_PATH = BEST_DIR / "metrics.json"
 SCHEMA_PATH = Path("models/artifacts/input_schema.json")
 
 model = None
 expected_cols = None
+cached_metrics = None
+
 
 @app.on_event("startup")
 def _load():
-    global model, expected_cols
+    global model, expected_cols, cached_metrics
     model = joblib.load(MODEL_PATH) if MODEL_PATH.exists() else None
     expected_cols = None
+    cached_metrics = None
     if SCHEMA_PATH.exists():
         expected_cols = json.loads(SCHEMA_PATH.read_text())
+    if METRICS_PATH.exists():
+        try:
+            cached_metrics = json.loads(METRICS_PATH.read_text())
+        except Exception:
+            cached_metrics = None
+
 
 @app.get("/")
 def root():
     return {"status": "ok", "docs": "/docs", "health": "/health"}
+
 
 @app.get("/health")
 def health():
@@ -31,22 +46,62 @@ def health():
         "expects": expected_cols,
     }
 
-# Pydantic model with broad types; we'll validate keys at runtime.
-class Payload(BaseModel):
-    events: int
-    unique_songs: int
-    unique_artists: int
-    avg_song_len: float
-    tenure_days: int
-    plan_tier: str = Field(..., examples=["paid", "free", "basic"])
-    gender: str = Field(..., examples=["M","F","U"])
+
+@app.get("/model/info")
+def model_info():
+    if model is None:
+        return {
+            "loaded": False,
+            "detail": "No model loaded. Train first, then ensure models/artifacts/best/model.joblib exists.",
+        }
+
+    # Model class name (e.g., 'RandomForestClassifier')
+    try:
+        clf = getattr(model, "named_steps", {}).get("clf", None)
+        model_class = (
+            clf.__class__.__name__ if clf is not None else model.__class__.__name__
+        )
+    except Exception:
+        model_class = "unknown"
+
+    # Timestamp from filesystem
+    try:
+        ts = MODEL_PATH.stat().st_mtime
+        from datetime import datetime
+
+        timestamp = datetime.fromtimestamp(ts).isoformat()
+    except Exception:
+        timestamp = None
+
+    # Metrics from METRICS_PATH (written by training loop)
+    info = {
+        "loaded": True,
+        "model_class": model_class,
+        "metrics": cached_metrics,
+        "artifact_path": str(MODEL_PATH),
+        "timestamp": timestamp,
+    }
+    return info
+
+
+@app.get("/model/schema")
+def model_schema():
+    return {
+        "expected_columns": expected_cols,
+        "note": "Send a JSON object whose keys exactly match expected_columns.",
+    }
+
 
 @app.post("/predict")
-def predict(x: Payload):
+def predict(x: dict):
     if model is None:
-        raise HTTPException(status_code=503, detail="Model not loaded. Train first, then restart the API.")
+        raise HTTPException(
+            status_code=503,
+            detail="Model not loaded. Train first, then restart the API.",
+        )
 
-    X = pd.DataFrame([x.dict()])
+    # Build DataFrame from raw dict
+    X = pd.DataFrame([x])
 
     # Validate input columns match what the model saw during training
     if expected_cols:
@@ -62,6 +117,8 @@ def predict(x: Payload):
                     "expected_order": expected_cols,
                 },
             )
+        # Reorder columns to training order
+        X = X[expected_cols]
 
     try:
         # model is a full sklearn Pipeline -> handles encoding internally
@@ -70,4 +127,7 @@ def predict(x: Payload):
     except Exception as e:
         # Surface the real reason instead of a generic 500
         tb = traceback.format_exc(limit=2)
-        raise HTTPException(status_code=500, detail=f"Prediction failed: {e.__class__.__name__}: {e}\n{tb}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Prediction failed: {e.__class__.__name__}: {e}\n{tb}",
+        )

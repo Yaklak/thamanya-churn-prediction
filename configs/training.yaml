@@ -1,24 +1,18 @@
 # configs/training.yaml
-random_seed: 42
-test_size: 0.2
 target: churn
 
 data:
-  path: data/raw/customer_churn_mini.json  # data JSONL file
+  path: data/raw/customer_churn.json  # data JSONL file
 
 features:
-  drop: ["userId", "last_ts", "first_ts", "location"]
-
-model:
-  name: xgboost
-  params:
-    n_estimators: 300
-    max_depth: 5
-    learning_rate: 0.1
-    subsample: 0.9
-    colsample_bytree: 0.9
+  drop: ["firstName", "lastName"]
+  inactivity_days: 30   # users inactive >= N days are churned (unless explicit)
 
 imbalance:
   method: class_weight
 
 metrics: ["roc_auc", "average_precision", "f1"]
+primary_metric: roc_auc
+
+logging:
+  level: DEBUG

@@ -32,7 +32,7 @@ repos:
     hooks:
       - id: pytest
         name: pytest
-        entry: bash -c 'if ls tests/test_*.py >/dev/null 2>&1; then pytest -q; else echo "no tests found (skipping)"; fi'
+        entry: bash -c 'PYTHONPATH=. pytest -q'
         language: system
         pass_filenames: false
         always_run: true

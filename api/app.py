@@ -61,6 +61,7 @@ def model_info():
         model_class = (
             clf.__class__.__name__ if clf is not None else model.__class__.__name__
         )
+        print(f"DEBUG: Model class in model_info: {model_class}")
     except Exception:
         model_class = "unknown"
 

@@ -1,38 +1,48 @@
-# ===== Base image =====
-FROM python:3.10-slim AS base
+# ===== Builder stage =====
+FROM python:3.10.13-slim AS builder
 
 # Avoid prompts & set UTF-8
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app
+    PYTHONUNBUFFERED=1
 
-# System dependencies:
-# - build-essential: some libs may need compilation
-# - libgomp1: OpenMP runtime needed by xgboost on Linux
-# - curl: for container healthcheck
+# System dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libgomp1 \
     curl \
  && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
-
-# ===== Install Python deps first (better caching) =====
 # If you sometimes use a private index, you can pass it at build time:
 #   docker build --build-arg PIP_INDEX_URL=https://<mirror>/simple .
 ARG PIP_INDEX_URL
 ENV PIP_INDEX_URL=${PIP_INDEX_URL}
 
-COPY requirements.txt ./requirements.txt
+WORKDIR /app
+
+COPY requirements.txt ./
 
 # Upgrade pip and install requirements
-RUN python -m pip install --upgrade pip \
- && pip install --no-cache-dir -r requirements.txt
+RUN python -m pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
-# ===== Copy project files =====
-# (Keep this after deps for better layer caching)
+# ===== Final stage =====
+FROM python:3.10.13-slim AS final
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgomp1 \
+    curl \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
+
 COPY . /app
 
 # Create a non-root user and own the app dir

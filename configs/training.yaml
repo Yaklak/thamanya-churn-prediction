@@ -11,7 +11,7 @@ features:
 imbalance:
   method: class_weight
 
-metrics: ["roc_auc", "average_precision", "f1"]
+metrics: ["roc_auc", "average_precision", "f1", "accuracy", "precision", "recall", "lift"]
 primary_metric: roc_auc
 
 logging:

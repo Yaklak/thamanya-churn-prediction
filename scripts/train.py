@@ -6,7 +6,7 @@ from copy import deepcopy
 from pathlib import Path
 
 import joblib
-import yaml
+import yaml  # type: ignore
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
@@ -90,7 +90,11 @@ def main(cfg):
         metrics = evaluate_all(
             pipe, X_te, y_te, cfg.get("metrics", ["roc_auc", "average_precision", "f1"])
         )
-        print(f"{name} metrics:", metrics)
+        rounded_metrics = {
+            k: (round(v, 2) if isinstance(v, (int, float)) else v)
+            for k, v in metrics.items()
+        }
+        print(f"\n[RESULT] {name} metrics:", rounded_metrics)
         trained[name] = {"pipe": pipe, "metrics": metrics, "fe": fe_local}
 
     # 8) Persist per-model artifacts
@@ -117,7 +121,9 @@ def main(cfg):
     joblib.dump(best_pipe, best_dir / "model.joblib")
     (best_dir / "metrics.json").write_text(json.dumps(best_metrics, indent=2))
     print(
-        f"BEST model: {best_name} → saved to {best_dir} ({primary}={best_metrics.get(primary)})"
+        f"\n---------------------------\n"
+        f"[RESULT] BEST model: {best_name} → saved to {best_dir}\n"
+        f"Primary metric ({primary}): {best_metrics.get(primary, 0):.2f}"
     )
 
     # 10) Save API input schema (columns BEFORE OHE)

@@ -30,6 +30,7 @@ htmlcov/
 .idea/
 
 # Data & models
-data/
+data/raw/customer_churn.json
+data/raw/customer_churn_mini.json
+data/processed/
 models/
-artifacts/

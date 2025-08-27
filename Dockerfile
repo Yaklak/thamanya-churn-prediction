@@ -1,39 +1,13 @@
-# ===== Builder stage =====
-FROM python:3.10.13-slim AS builder
+# syntax=docker/dockerfile:1.7
+FROM python:3.11-slim
 
-# Avoid prompts & set UTF-8
-ENV DEBIAN_FRONTEND=noninteractive \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
-
-# System dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    libgomp1 \
-    curl \
- && rm -rf /var/lib/apt/lists/*
-
-# If you sometimes use a private index, you can pass it at build time:
-#   docker build --build-arg PIP_INDEX_URL=https://<mirror>/simple .
-ARG PIP_INDEX_URL
-ENV PIP_INDEX_URL=${PIP_INDEX_URL}
-
-WORKDIR /app
-
-COPY requirements.txt ./
-
-# Upgrade pip and install requirements
-RUN python -m pip install --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
-
-# ===== Final stage =====
-FROM python:3.10.13-slim AS final
-
+# Avoid interactive prompts & ensure UTF-8
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app
 
+# System dependencies only (no build toolchain needed for manylinux wheels)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
     curl \
@@ -41,22 +15,31 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
+# Optionally allow private index at build time
+ARG PIP_INDEX_URL
+ENV PIP_INDEX_URL=${PIP_INDEX_URL}
 
+# Pre-install pip and cache wheels to speed up rebuilds
+RUN python -m pip install --upgrade pip
+
+# Install runtime dependencies first (better Docker layer caching)
+COPY requirements.txt ./requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir -r requirements.txt
+
+# Copy the application code
 COPY . /app
 
-# Create a non-root user and own the app dir
+# Create a non-root user
 RUN useradd -m appuser && chown -R appuser:appuser /app
 USER appuser
 
 # Expose API port
 EXPOSE 8000
 
-# Optional: lightweight healthcheck (relies on the server being up)
-# We'll check /health, falling back to /model/info if needed.
+# Healthcheck for FastAPI
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD curl -fsS http://127.0.0.1:8000/health || curl -fsS http://127.0.0.1:8000/model/info || exit 1
 
-# By default, load the "best" model from models/artifacts/best/model.joblib.
-# Make sure you have run training locally (make train) and committed or volume-mounted artifacts.
+# Default command: serve the API
 CMD ["uvicorn", "api.app:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -45,9 +45,9 @@ def clean(df: pd.DataFrame, drop_cols: list) -> pd.DataFrame:
     df = df.drop(columns=drop_cols, errors="ignore")
     removed = before - set(df.columns)
     # sanity check: confirm expected columns were removed
-    assert removed == set(
-        drop_cols
-    ), f"Unexpected removed cols: {removed} vs {drop_cols}"
+    assert removed == set(drop_cols), (
+        f"Unexpected removed cols: {removed} vs {drop_cols}"
+    )
     logger.debug("Removed columns: %s", removed)
 
     # --- 3) Normalize/standardize key categoricals

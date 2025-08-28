@@ -1,7 +1,7 @@
 repos:
   # --- General hygiene hooks ---
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.6.0
+    rev: v6.0.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
@@ -10,22 +10,23 @@ repos:
 
   # --- Code formatting and Linting ---
   - repo: https://github.com/charliermarsh/ruff-pre-commit
-    rev: v0.1.6
+    rev: v0.12.10
     hooks:
       - id: ruff
+        exclude: ^notebooks/
         args: [--fix]
       - id: ruff-format
+        exclude: ^notebooks/
 
   # --- Static type checking ---
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.10.0
+    rev: v1.17.1
     hooks:
       - id: mypy
   - repo: local
     hooks:
       - id: pytest
         name: pytest
-        entry: .venv/bin/pytest -q
         language: system
+        entry: python -m pytest -q
         pass_filenames: false
-        always_run: true

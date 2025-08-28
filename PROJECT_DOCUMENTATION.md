@@ -198,3 +198,53 @@ Request:
   "submit_upgrade_failed_ratio": 0.0,
   "submit_downgrade_failed_ratio": 0.0
 }
+```
+
+Response:
+```json
+{
+  "churn_probability": 0.27,
+  "churn_prediction": false,
+  "model_version": "xgboost_2024-06-01T12:34:56",
+  "explanation": "The user has a low probability of churn based on recent activity and engagement metrics."
+}
+```
+
+---
+
+## Quickstart
+
+### Running Locally
+
+1. Clone the repository and navigate to the project directory.
+2. Install dependencies:
+   ```bash
+   make install
+   ```
+3. Train the model:
+   ```bash
+   make train
+   ```
+4. Start the FastAPI service:
+   ```bash
+   make serve
+   ```
+5. Access the API at `http://localhost:8000`.
+
+### Running with Docker
+
+1. Build the Docker image:
+   ```bash
+   make docker-build
+   ```
+2. Run the Docker container:
+   ```bash
+   make docker-run
+   ```
+3. The API will be available at `http://localhost:8000`.
+
+---
+
+## Conclusion
+
+This project presents a comprehensive customer churn prediction system that integrates data exploration, feature engineering, model training, and deployment into a seamless pipeline. Leveraging robust evaluation metrics and automated best model selection ensures high-quality predictions. The FastAPI service provides a scalable and user-friendly interface for real-time inference. Combined with CI/CD workflows and Dockerization, the system supports reproducibility, maintainability, and ease of deployment, making it a valuable tool for business stakeholders to proactively manage customer retention.

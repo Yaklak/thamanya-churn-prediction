@@ -1,6 +1,6 @@
 # Churn Prediction
 
-Production-ready churn prediction pipeline with feature engineering, **multi-model training** (Logistic Regression, Decision Tree, Random Forest), **model selection & registry**, and a **FastAPI** service for real-time scoring. Includes schema-aware payload validation, example payloads, pre-commit hooks, and Docker packaging.
+Production-ready churn prediction pipeline with feature engineering, **multi-model training** (Logistic Regression, Decision Tree, Random Forest, XGBoost), **model selection & registry** with tie-breaking priority for XGBoost, and a **FastAPI** service for real-time scoring. Includes schema-aware payload validation, example payloads, pre-commit hooks, and Docker packaging.
 
 [![CI](https://github.com/Yaklak/thamanya-churn-prediction/actions/workflows/ci.yml/badge.svg)](https://github.com/Yaklak/thamanya-churn-prediction/actions/workflows/ci.yml)
 
@@ -9,7 +9,7 @@ Production-ready churn prediction pipeline with feature engineering, **multi-mod
 - **End-to-end pipeline**
   - `src/data` → load/clean events
   - `src/features` → feature engineering + modeling preprocess
-  - `scripts/train.py` → trains 3 models, evaluates, **selects best**, saves to registry
+  - `scripts/train.py` → trains 4 models, evaluates, **selects best with tie-breaking priority for XGBoost**, saves to registry
 - **Model registry**
   - Saves each run to `models/artifacts/<modelname>_<timestamp>/`
   - Copies the best model to `models/artifacts/best/`
@@ -18,8 +18,10 @@ Production-ready churn prediction pipeline with feature engineering, **multi-mod
   - `/health` – service & schema status
   - `/model/info` – which model is loaded + metrics
   - `/model/schema` – expected feature columns
-  - `/model/example` – example payload matching schema
+  - `/model/example` – example payload matching schema, supports random real rows
   - `/predict` – returns `prediction` and `probability`
+- **Data**
+  - Processed data files saved as CSVs in `data/processed/*.csv`
 - **Tooling**
   - `Makefile` for repetitive tasks
   - Pre-commit hooks (ruff, black, isort, mypy, pytest)
@@ -78,7 +80,7 @@ make serve
 - `GET /health`: Health check endpoint.
 - `GET /model/info`: Get information about the loaded model.
 - `GET /model/schema`: Get the input schema of the model.
-- `GET /model/example`: Get an example payload for the model.
+- `GET /model/example`: Get an example payload for the model, supports random real rows.
 - `POST /predict`: Make a prediction.
 
 ### `GET /health`
@@ -134,11 +136,18 @@ make serve
 
 ### `GET /model/example`
 
+**Query Parameters:**
+
+- `minimal` (boolean, optional): If set to `true`, returns a minimal example payload with all feature values set to zero. Useful for understanding the required schema without real data.
+- `idx` (integer, optional): Specifies a row index from the processed dataset to use as the example payload. If provided, returns the real feature values from that row. If both `minimal` and `idx` are provided, `idx` takes precedence.
+
+If no query parameters are provided, the endpoint attempts to load an example payload from `examples/example_payload.json`. If this file is not available, it falls back to returning a random real row from the processed data.
+
 **Response:**
 
 ```json
 {
-  "note": "Loaded from examples/example_payload.json",
+  "note": "Loaded from examples/example_payload.json or random real rows",
   "mode": "file",
   "source_file": "examples/example_payload.json",
   "example": {
@@ -151,12 +160,18 @@ make serve
 
 ### `POST /predict`
 
+This endpoint accepts a JSON payload matching the expected input schema and returns a churn prediction with the associated probability.
+
 **Request:**
 
 ```json
 {
-  "events": 0,
-  "sessions": 0,
+  "events": 10,
+  "sessions": 3,
+  "total_listens": 25,
+  "avg_session_length": 300,
+  "is_premium_user": 1,
+  "days_since_last_session": 5,
   ...
 }
 ```
@@ -165,11 +180,68 @@ make serve
 
 ```json
 {
-  "churn_probability": 0.5
+  "churn_probability": 0.15
 }
 ```
 
-### Quickstart: Real Example Payload
+### Detailed `/predict` Example
+
+**Sample Request Payload:**
+
+```json
+{
+  "events": 12,
+  "sessions": 4,
+  "total_listens": 30,
+  "avg_session_length": 350,
+  "is_premium_user": 0,
+  "days_since_last_session": 7,
+  "num_artists_listened": 5,
+  "num_songs_listened": 20,
+  "avg_song_length": 210,
+  "num_skips": 2
+}
+```
+
+**Sample Response:**
+
+```json
+{
+  "churn_probability": 0.72
+}
+```
+
+**Interpretation:**
+
+The model predicts a 72% probability that the user will churn (stop using the service). This high value suggests the user is at risk and may benefit from retention efforts. Lower probabilities indicate lower risk of churn.
+
+### Error Handling
+
+- **422 Unprocessable Entity:** Returned when the request payload does not conform to the expected schema. This can happen if required fields are missing, extra fields are present, or data types are incorrect. The response includes details about the validation errors.
+
+  **Example:**
+
+  ```json
+  {
+    "detail": [
+      {
+        "loc": ["body", "events"],
+        "msg": "field required",
+        "type": "value_error.missing"
+      }
+    ]
+  }
+  ```
+
+- **500 Internal Server Error:** Returned when an unexpected error occurs on the server, such as issues loading the model or processing the request. The response may include a message indicating the error.
+
+  **Note:** If you encounter repeated 500 errors, check the server logs for details and ensure the model is properly loaded.
+
+### Interactive Docs
+
+An interactive API documentation interface is available at the `/docs` endpoint. This interface allows you to explore the API endpoints, view request/response schemas, and make test calls directly from your browser.
+
+## Quickstart: Real Example Payload
 
 After running `make train`, a real schema-aligned example is automatically generated at:
 
@@ -223,22 +295,62 @@ The dataset used in this project is a synthetic dataset of user events from a mu
 
 ## Models
 
-The project trains three different models:
+The project trains four different models:
 
 - **Logistic Regression:** A simple linear model that is easy to interpret.
 - **Decision Tree:** A non-linear model that is easy to visualize.
 - **Random Forest:** An ensemble of decision trees that is more robust and accurate than a single decision tree.
+- **XGBoost:** A powerful gradient boosting model that often achieves state-of-the-art performance.
 
-The best model is selected based on the ROC AUC score on the test set. The best model is then saved to the `models/artifacts/best` directory.
+The best model is selected based on the ROC AUC score on the test set, with tie-breaking priority given to XGBoost. The best model is then saved to the `models/artifacts/best` directory.
+
+## Evaluation Metrics
+
+The models are evaluated using the following metrics:
+
+- **ROC AUC:** Measures the ability of the model to distinguish between classes.
+- **Average Precision:** Summarizes a precision-recall curve as the weighted mean of precisions achieved at each threshold.
+- **F1 Score:** Harmonic mean of precision and recall.
+- **Accuracy:** Overall correctness of the model.
+- **Precision:** Proportion of positive identifications that were actually correct.
+- **Recall:** Proportion of actual positives that were identified correctly.
+- **Lift/Gain:** Measures the effectiveness of the model at identifying positive cases compared to random selection.
 
 ## Docker
 
 ```
-docker build -t yaklak/thamanya-churn:latest .
+docker build -t yaklak/thamanya-churn:latest -f Dockerfile .
 docker run --rm -p 8000:8000 \
   -v "$PWD/models/artifacts:/app/models/artifacts" \
   yaklak/thamanya-churn:latest
 ```
+
+## Quickstart with Docker
+
+```bash
+# 1. Build the Docker image
+docker build -t yaklak/thamanya-churn:latest -f Dockerfile .
+
+# 2. Run the container with port mapping and volume mount
+docker run --rm -p 8000:8000 \
+  -v "$PWD/models/artifacts:/app/models/artifacts" \
+  yaklak/thamanya-churn:latest
+
+# 3. Check health endpoint
+curl http://127.0.0.1:8000/health
+
+# 4. Make a prediction using example payload
+curl -X POST http://127.0.0.1:8000/predict \
+  -H "Content-Type: application/json" \
+  -d @examples/example_payload.json
+```
+
+## CI/CD
+
+This project includes GitHub Actions workflows:
+
+- **CI:** Runs pre-commit checks, pytest tests, and builds the Docker image on every push.
+- **release-docker:** Automatically builds and publishes Docker images to Docker Hub when a new tag is pushed.
 
 ## Tests
 

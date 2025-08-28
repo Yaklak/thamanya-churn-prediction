@@ -12,6 +12,15 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 from sklearn.tree import DecisionTreeClassifier
 
+# Optional: XGBoost (will be skipped if not available)
+try:
+    from xgboost import XGBClassifier  # type: ignore
+
+    _HAS_XGB = True
+except Exception:
+    XGBClassifier = None  # type: ignore
+    _HAS_XGB = False
+
 from src.data.load import load_raw_events  # JSONL ingestion
 from src.data.preprocess import clean  # basic cleaning
 from src.features.build_features import build_user_features  # aggregate + churn label
@@ -33,6 +42,19 @@ def _save_artifacts_compat(pipe, metrics, model_name, fe=None):
         if fe is None:
             raise
         return save_artifacts(pipe, fe, metrics)
+
+
+# Rank models for tie-breaking: xgboost > logreg > random_forest > others (e.g., decision_tree)
+def _priority(model_name: str) -> int:
+    name = model_name.lower()
+    if name == "xgboost":
+        return 3
+    elif name == "logreg":
+        return 2
+    elif name == "random_forest":
+        return 1
+    else:
+        return 0
 
 
 def main(cfg):
@@ -67,16 +89,32 @@ def main(cfg):
         random_state=cfg.get("random_seed", 42),
     )
 
-    # 6) Define candidate estimators
+    # 6) Define candidate estimators (conditionally include XGBoost)
     candidates = {
         "logreg": LogisticRegression(max_iter=500, class_weight="balanced"),
-        "decision_tree": DecisionTreeClassifier(
-            random_state=42, class_weight="balanced"
-        ),
         "random_forest": RandomForestClassifier(
             n_estimators=300, random_state=42, class_weight="balanced", n_jobs=-1
         ),
+        "decision_tree": DecisionTreeClassifier(
+            random_state=42, class_weight="balanced"
+        ),
     }
+    if _HAS_XGB and XGBClassifier is not None:
+        candidates["xgboost"] = XGBClassifier(
+            n_estimators=400,
+            learning_rate=0.1,
+            max_depth=6,
+            subsample=0.9,
+            colsample_bytree=0.9,
+            reg_lambda=1.0,
+            objective="binary:logistic",
+            eval_metric="logloss",
+            tree_method="hist",
+            n_jobs=-1,
+            random_state=42,
+        )
+    else:
+        print("[WARN] xgboost not available; skipping XGBoost candidate.")
 
     trained = {}  # name -> {"pipe": pipe, "metrics": metrics}
 
@@ -112,7 +150,13 @@ def main(cfg):
 
     # 9) Select BEST model by primary metric (roc_auc) and copy to models/artifacts/best/
     primary = cfg.get("primary_metric", "roc_auc")
-    best_name = max(results, key=lambda k: results[k].get(primary, -1))
+    best_name = max(
+        results,
+        key=lambda k: (
+            results[k].get(primary, float("-inf")),
+            _priority(k),
+        ),
+    )
     best_pipe = trained[best_name]["pipe"]
     best_metrics = trained[best_name]["metrics"]
 

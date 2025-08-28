@@ -6,7 +6,6 @@ from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.linear_model import LogisticRegression
 from fastapi.testclient import TestClient
-import joblib
 import numpy as np
 
 
@@ -213,36 +212,23 @@ def client(tmp_path) -> TestClient:
             ("clf", LogisticRegression()),
         ]
     )
-    dummy_metrics = {"roc_auc": 0.9, "f1": 0.8}
 
     # Fit the dummy model
     X = pd.DataFrame(np.random.rand(10, 3), columns=dummy_schema)
     y = pd.Series(np.random.randint(0, 2, 10))
     dummy_model.fit(X, y)
 
-    # Save the dummy artifacts
-    best_dir = tmp_path / "models" / "artifacts" / "best"
-    best_dir.mkdir(parents=True, exist_ok=True)
-    joblib.dump(dummy_model, best_dir / "model.joblib")
-    with open(best_dir / "metrics.json", "w") as f:
-        json.dump(dummy_metrics, f)
+    # Build client (startup runs with app lifespan)
+    test_client = TestClient(fastapi_app)
 
-    schema_path = tmp_path / "models" / "artifacts" / "input_schema.json"
-    with open(schema_path, "w") as f:
-        json.dump(dummy_schema, f)
+    # Patch state after startup to inject dummy model & schema
+    api_module.app.state.model = dummy_model
+    api_module.app.state.input_schema = dummy_schema
 
-    # Monkeypatch the paths in the app
-    original_model_path = api_module.MODEL_PATH
-    original_schema_path = api_module.SCHEMA_PATH
-    api_module.MODEL_PATH = best_dir / "model.joblib"
-    api_module.SCHEMA_PATH = schema_path
+    # Also mirror on module-level variables for any legacy access paths (runtime use only)
+    setattr(api_module, "model", dummy_model)
+    setattr(api_module, "input_schema", dummy_schema)
 
-    # Reload the app to pick up the new paths
-    api_module._load()
+    yield test_client
 
-    yield TestClient(fastapi_app)
-
-    # Restore the original paths
-    api_module.MODEL_PATH = original_model_path
-    api_module.SCHEMA_PATH = original_schema_path
-    api_module._load()
+    # No teardown necessary; TestClient handles app shutdown.

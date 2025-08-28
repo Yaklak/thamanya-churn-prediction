@@ -2,6 +2,8 @@
 
 Production-ready churn prediction pipeline with feature engineering, **multi-model training** (Logistic Regression, Decision Tree, Random Forest), **model selection & registry**, and a **FastAPI** service for real-time scoring. Includes schema-aware payload validation, example payloads, pre-commit hooks, and Docker packaging.
 
+[![CI](https://github.com/Yaklak/thamanya-churn-prediction/actions/workflows/ci.yml/badge.svg)](https://github.com/Yaklak/thamanya-churn-prediction/actions/workflows/ci.yml)
+
 ## Features
 
 - **End-to-end pipeline**
@@ -50,10 +52,11 @@ Production-ready churn prediction pipeline with feature engineering, **multi-mod
 **pip**
 
 ```
-python -m venv .venv
+python3.11 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
-pip install -r requirements-dev.txt
+pip install -U pip
+make install
+make install-dev
 ```
 
 ## Train Models

@@ -1,8 +1,10 @@
 # -------- Makefile (safe quoting + cross‑platform) --------
 SHELL := /bin/bash
 PY ?= .venv/bin/python
-# Quote PYTHONPATH so spaces in the absolute path don't break commands
 export PYTHONPATH := "$(shell pwd)"
+# Quote PYTHONPATH so spaces in the absolute path don't break commands
+
+MOUNT_DIR ?= $(CURDIR)/models
 
 OS := $(shell uname -s 2>/dev/null || echo Windows)
 BREW := $(shell command -v brew 2>/dev/null)
@@ -51,7 +53,7 @@ freeze:
 	$(PY) -m pip freeze > requirements.txt
 
 lint:
-	$(PY) -m ruff check .
+	$(PY) -m ruff check api src scripts tests
 
 test:
 	$(PY) -m pytest
@@ -60,7 +62,15 @@ train:
 	$(PY) -m scripts.train --config configs/training.yaml
 
 serve:
-	PYTHONPATH=$(PYTHONPATH) .venv/bin/uvicorn api.app:app --reload --port 8000
+	PYTHONPATH=$(PYTHONPATH) .venv/bin/uvicorn api.app:app \
+		--reload --port 8000 \
+		--reload-dir api \
+		--reload-dir src \
+		--reload-dir scripts \
+		--reload-exclude ".venv/*" \
+		--reload-exclude "*/site-packages/*" \
+		--reload-exclude "*.pyc" \
+		--reload-exclude "__pycache__/*"
 
 drift:
 	@if [ -f scripts/detect_drift.py ]; then \
@@ -79,19 +89,23 @@ verify-xgb:
 
 check-env:
 	@echo "OS: $(OS)"
-	@echo "CWD: $(pwd)"
-	@echo "PYTHON: $(which $(PY))"
+	@echo "CWD: $(CURDIR)"
+	@echo "PY (Make var): $(PY)"
+	@echo "PY exists/executable? $$( [ -x "$(PY)" ] && echo yes || echo no )"
+	@echo "which python: $$(command -v python || true)"
 	@echo "PYTHONPATH: $(PYTHONPATH)"
-	@$(PY) -V
-	@$(PY) - <<'PY'
-		import sys, os, importlib.util
-		print("Top sys.path:", sys.path[:3])
-		print("Can import 'src'? ", importlib.util.find_spec('src') is not None)
-	PY
+	@$(PY) --version
+	@$(PY) -c "import sys, os, importlib.util; \
+print('sys.executable:', sys.executable); \
+print('Top sys.path:', sys.path[:3]); \
+print(\"Can import 'src'?:\", importlib.util.find_spec('src') is not None); \
+print('PWD:', os.getcwd())"
 
 
 docker-build:
 	docker build -t churn-api:latest .
 
 docker-run:
-	docker run --rm -p 8000:8000 -v "$(pwd)/models:/app/models" churn-api:latest
+	@echo "Host mount: $(MOUNT_DIR)"
+	mkdir -p "$(MOUNT_DIR)" \
+	&& docker run --rm -p 8000:8000 -v "$(MOUNT_DIR):/app/models" churn-api:latest
